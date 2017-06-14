@@ -10,6 +10,7 @@
   "rules": {
     "array-bracket-spacing": "off",
     "block-scoped-var": "error",
+    "flowtype/define-flow-type": 1,
     "consistent-return": "off",
     "global-require": "off",
     "key-spacing": "off",

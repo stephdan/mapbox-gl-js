@@ -122,7 +122,7 @@ Every expression evaluates to a value of one of the following types.
 ###Lookup:
 - `["get", obj: Object, key: String ] -> Value`
 - `["has", obj: Object, key: String ] -> Boolean`
-- `["at", arr: Array<T>|Vector<T>, index: Number] -> T`
+- `["at", arr: Array<T, N>|Vector<T>, index: Number] -> T`
 - `["typeof", expr: Value] -> String`
 - `["length", e: Vector<T>|String] -> Number`
 
@@ -134,7 +134,7 @@ Every expression evaluates to a value of one of the following types.
 ###Decision:
 - `["case", cond1: Boolean, result1: T, cond2: Boolean, result2: T, ..., cond_m, result_m: T, result_otherwise: T] -> T`
 - `["match", x: T, a_1: T, y_1: U, a_2: T, y_2: U, ..., a_m: T, y_m: U, y_else: U]` - `a_1`, `a_2`, ... must be _literal_ values of type `T`.
-- `["is_error", expr: T]` - `true` if `expr` is an `Error` value, `false` otherwise
+- `["coalesce", e1: T, e2: T, e3: T, ...] -> T` - evaluates each expression in turn until the first non-error value is obtained, and returns that value.
 
 ###Comparison and boolean operations:
 - `[ "==", expr1: T, expr2: T] -> Boolean`, where T is any primitive type. (similar for `!=`)

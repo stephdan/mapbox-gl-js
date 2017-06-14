@@ -1,0 +1,14 @@
+{
+  "expression": ["+", ["-", 0, {}], 10],
+  "expected": {
+    "compileResult": {
+      "result": "error",
+      "errors": [
+        {
+          "key": "1.2",
+          "error": "Expected an array, but found object instead."
+        }
+      ]
+    }
+  }
+}
