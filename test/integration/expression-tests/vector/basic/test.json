@@ -1,0 +1,15 @@
+{
+  "expression": [
+    "vector",
+    1,
+    2
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": true,
+      "isZoomConstant": true,
+      "type": "Vector<number>"
+    }
+  }
+}

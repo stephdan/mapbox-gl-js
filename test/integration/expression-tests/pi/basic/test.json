@@ -1,0 +1,22 @@
+{
+  "expression": [
+    "pi"
+  ],
+  "evaluate": [
+    [
+      {},
+      {}
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": true,
+      "isZoomConstant": true,
+      "type": "number"
+    },
+    "evaluateResults": [
+      3.141592653589793
+    ]
+  }
+}

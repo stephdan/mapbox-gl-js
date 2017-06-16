@@ -14,6 +14,8 @@ module.exports = function (directory, implementation, options, run) {
 
     const tests = options.tests || [];
 
+    const fixtureFilename = options.fixtureFilename || 'style.json';
+
     function shouldRunTest(group, test) {
         if (tests.length === 0)
             return true;
@@ -44,14 +46,14 @@ module.exports = function (directory, implementation, options, run) {
                 return;
 
             try {
-                if (!fs.lstatSync(path.join(directory, group, test, 'style.json')).isFile())
+                if (!fs.lstatSync(path.join(directory, group, test, fixtureFilename)).isFile())
                     return;
             } catch (err) {
-                console.log(colors.blue(`* omitting ${group} ${test} due to missing style`));
+                console.log(colors.blue(`* omitting ${group} ${test} due to missing ${fixtureFilename}`));
                 return;
             }
 
-            const style = require(path.join(directory, group, test, 'style.json'));
+            const style = require(path.join(directory, group, test, fixtureFilename));
 
             server.localizeURLs(style);
 
@@ -99,6 +101,7 @@ module.exports = function (directory, implementation, options, run) {
                     } else if (!params.ok) {
                         params.color = 'red';
                         console.log(colors.red(`* failed ${params.group} ${params.test}`));
+                        if (process.env.SINGLE_ERROR) { process.exit(1); }
                     } else {
                         params.color = 'green';
                         console.log(colors.green(`* passed ${params.group} ${params.test}`));

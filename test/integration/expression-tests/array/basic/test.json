@@ -1,0 +1,15 @@
+{
+  "expression": [
+    "array",
+    1,
+    2
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": true,
+      "isZoomConstant": true,
+      "type": "Array<number, 2>"
+    }
+  }
+}

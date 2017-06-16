@@ -1,0 +1,36 @@
+{
+  "expression": [
+    "id"
+  ],
+  "evaluate": [
+    [
+      {},
+      {}
+    ],
+    [
+      {},
+      {
+        "id": 1
+      }
+    ],
+    [
+      {},
+      {
+        "id": "one"
+      }
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": false,
+      "isZoomConstant": true,
+      "type": "Variant<null | number | string | boolean | color | object | Vector<(recursive_wrapper)>>"
+    },
+    "evaluateResults": [
+      null,
+      1,
+      "one"
+    ]
+  }
+}

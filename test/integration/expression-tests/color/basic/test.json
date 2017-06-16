@@ -1,0 +1,67 @@
+{
+  "expression": [
+    "color",
+    [
+      "string",
+      [
+        "get",
+        "x"
+      ]
+    ]
+  ],
+  "evaluate": [
+    [
+      {},
+      {
+        "properties": {
+          "x": "red"
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": "invalid"
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": "rgba(0, 255, 0, 1)"
+        }
+      }
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": false,
+      "isZoomConstant": true,
+      "type": "color"
+    },
+    "evaluateResults": [
+      {
+        "value": [
+          1,
+          0,
+          0,
+          1
+        ]
+      },
+      {
+        "error": "ExpressionEvaluationError: Could not parse color from value 'invalid'"
+      },
+      {
+        "value": [
+          0,
+          1,
+          0,
+          1
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "expression": [
+    "rgba",
+    0,
+    0,
+    255,
+    1
+  ],
+  "evaluate": [
+    [
+      {},
+      {}
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": true,
+      "isZoomConstant": true,
+      "type": "color"
+    },
+    "evaluateResults": [
+      {
+        "value": [
+          0,
+          0,
+          1,
+          1
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "expression": [
+    "typeof",
+    [
+      "get",
+      "x"
+    ]
+  ],
+  "evaluate": [
+    [
+      {},
+      {
+        "properties": {
+          "x": null
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": "s"
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": 0
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": false
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": []
+        }
+      }
+    ],
+    [
+      {},
+      {
+        "properties": {
+          "x": {}
+        }
+      }
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": false,
+      "isZoomConstant": true,
+      "type": "string"
+    },
+    "evaluateResults": [
+      "Null",
+      "String",
+      "Number",
+      "Boolean",
+      "Vector<Value>",
+      "Object"
+    ]
+  }
+}

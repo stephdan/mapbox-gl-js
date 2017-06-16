@@ -1,0 +1,22 @@
+{
+  "expression": [
+    "ln2"
+  ],
+  "evaluate": [
+    [
+      {},
+      {}
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": true,
+      "isZoomConstant": true,
+      "type": "number"
+    },
+    "evaluateResults": [
+      0.6931471805599453
+    ]
+  }
+}

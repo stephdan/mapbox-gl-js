@@ -1,0 +1,31 @@
+{
+  "expression": [
+    "geometry_type"
+  ],
+  "evaluate": [
+    [
+      {},
+      {}
+    ],
+    [
+      {},
+      {
+        "geometry": {
+          "type": "LineString"
+        }
+      }
+    ]
+  ],
+  "expected": {
+    "compileResult": {
+      "result": "success",
+      "isFeatureConstant": false,
+      "isZoomConstant": true,
+      "type": "string"
+    },
+    "evaluateResults": [
+      {"error":"ExpressionEvaluationError: Cannot get property type from null object feature.geometry."},
+      "LineString"
+    ]
+  }
+}
