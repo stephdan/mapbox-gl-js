@@ -28,7 +28,7 @@
       "type": "Variant<null | number | string | boolean | color | object | Vector<(recursive_wrapper)>>"
     },
     "evaluateResults": [
-      null,
+      {"error": "ExpressionEvaluationError: Property 'id' not found in feature"},
       1,
       "one"
     ]
