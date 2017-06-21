@@ -152,9 +152,8 @@ const expressions: { [string]: Definition } = {
     'id': {
         name: 'id',
         type: lambda(ValueType),
-        // TODO: should yield error if missing
         compile: () => ({
-            js: 'typeof feature.id === "undefined" ? null : feature.id',
+            js: 'this.get(feature, "id", "feature")',
             isFeatureConstant: false
         })
     },
@@ -337,7 +336,6 @@ const expressions: { [string]: Definition } = {
                 interpolationOptions.base = baseExpr.value;
             }
 
-            // TODO: investigate how this code is optimized in V8
             return {js: `
             (function () {
                 var input = ${args[1].js};
