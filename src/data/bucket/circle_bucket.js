@@ -1,9 +1,17 @@
-'use strict';
+// @flow
 
-const Bucket = require('../bucket');
+const {SegmentVector} = require('../segment');
+const Buffer = require('../buffer');
+const {ProgramConfigurationSet} = require('../program_configuration');
+const createVertexArrayType = require('../vertex_array_type');
 const createElementArrayType = require('../element_array_type');
 const loadGeometry = require('../load_geometry');
 const EXTENT = require('../extent');
+
+import type {Bucket, IndexedFeature, PopulateParameters, SerializedBucket} from '../bucket';
+import type {ProgramInterface} from '../program_configuration';
+import type StyleLayer from '../../style/style_layer';
+import type {StructArray} from '../../util/struct_array';
 
 const circleInterface = {
     layoutAttributes: [
@@ -12,13 +20,13 @@ const circleInterface = {
     elementArrayType: createElementArrayType(),
 
     paintAttributes: [
-        {property: 'circle-color',          type: 'Uint8'},
-        {property: 'circle-radius',         type: 'Uint16', multiplier: 10},
-        {property: 'circle-blur',           type: 'Uint16', multiplier: 10},
-        {property: 'circle-opacity',        type: 'Uint8',  multiplier: 255},
-        {property: 'circle-stroke-color',   type: 'Uint8'},
-        {property: 'circle-stroke-width',   type: 'Uint16', multiplier: 10},
-        {property: 'circle-stroke-opacity', type: 'Uint8',  multiplier: 255}
+        {property: 'circle-color'},
+        {property: 'circle-radius'},
+        {property: 'circle-blur'},
+        {property: 'circle-opacity'},
+        {property: 'circle-stroke-color'},
+        {property: 'circle-stroke-width'},
+        {property: 'circle-stroke-opacity'}
     ]
 };
 
@@ -28,6 +36,9 @@ function addCircleVertex(layoutVertexArray, x, y, extrudeX, extrudeY) {
         (y * 2) + ((extrudeY + 1) / 2));
 }
 
+const LayoutVertexArrayType = createVertexArrayType(circleInterface.layoutAttributes);
+const ElementArrayType = circleInterface.elementArrayType;
+
 /**
  * Circles are represented by two triangles.
  *
@@ -35,14 +46,74 @@ function addCircleVertex(layoutVertexArray, x, y, extrudeX, extrudeY) {
  * vector that is where it points.
  * @private
  */
-class CircleBucket extends Bucket {
-    constructor(options) {
-        super(options, circleInterface);
+class CircleBucket implements Bucket {
+    static programInterface: ProgramInterface;
+
+    index: number;
+    zoom: number;
+    overscaling: number;
+    layers: Array<StyleLayer>;
+
+    layoutVertexArray: StructArray;
+    layoutVertexBuffer: Buffer;
+
+    elementArray: StructArray;
+    elementBuffer: Buffer;
+
+    programConfigurations: ProgramConfigurationSet;
+    segments: SegmentVector;
+
+    constructor(options: any) {
+        this.zoom = options.zoom;
+        this.overscaling = options.overscaling;
+        this.layers = options.layers;
+        this.index = options.index;
+
+        if (options.layoutVertexArray) {
+            this.layoutVertexBuffer = new Buffer(options.layoutVertexArray, LayoutVertexArrayType.serialize(), Buffer.BufferType.VERTEX);
+            this.elementBuffer = new Buffer(options.elementArray, ElementArrayType.serialize(), Buffer.BufferType.ELEMENT);
+            this.programConfigurations = ProgramConfigurationSet.deserialize(circleInterface, options.layers, options.zoom, options.programConfigurations);
+            this.segments = new SegmentVector(options.segments);
+        } else {
+            this.layoutVertexArray = new LayoutVertexArrayType();
+            this.elementArray = new ElementArrayType();
+            this.programConfigurations = new ProgramConfigurationSet(circleInterface, options.layers, options.zoom);
+            this.segments = new SegmentVector();
+        }
     }
 
-    addFeature(feature) {
-        const arrays = this.arrays;
+    populate(features: Array<IndexedFeature>, options: PopulateParameters) {
+        for (const {feature, index, sourceLayerIndex} of features) {
+            if (this.layers[0].filter(feature)) {
+                this.addFeature(feature);
+                options.featureIndex.insert(feature, index, sourceLayerIndex, this.index);
+            }
+        }
+    }
 
+    isEmpty() {
+        return this.layoutVertexArray.length === 0;
+    }
+
+    serialize(transferables?: Array<Transferable>): SerializedBucket {
+        return {
+            zoom: this.zoom,
+            layerIds: this.layers.map((l) => l.id),
+            layoutVertexArray: this.layoutVertexArray.serialize(transferables),
+            elementArray: this.elementArray.serialize(transferables),
+            programConfigurations: this.programConfigurations.serialize(transferables),
+            segments: this.segments.get(),
+        };
+    }
+
+    destroy() {
+        this.layoutVertexBuffer.destroy();
+        this.elementBuffer.destroy();
+        this.programConfigurations.destroy();
+        this.segments.destroy();
+    }
+
+    addFeature(feature: VectorTileFeature) {
         for (const ring of loadGeometry(feature)) {
             for (const point of ring) {
                 const x = point.x;
@@ -60,23 +131,23 @@ class CircleBucket extends Bucket {
                 // │ 0     1 │
                 // └─────────┘
 
-                const segment = arrays.prepareSegment(4);
+                const segment = this.segments.prepareSegment(4, this.layoutVertexArray, this.elementArray);
                 const index = segment.vertexLength;
 
-                addCircleVertex(arrays.layoutVertexArray, x, y, -1, -1);
-                addCircleVertex(arrays.layoutVertexArray, x, y, 1, -1);
-                addCircleVertex(arrays.layoutVertexArray, x, y, 1, 1);
-                addCircleVertex(arrays.layoutVertexArray, x, y, -1, 1);
+                addCircleVertex(this.layoutVertexArray, x, y, -1, -1);
+                addCircleVertex(this.layoutVertexArray, x, y, 1, -1);
+                addCircleVertex(this.layoutVertexArray, x, y, 1, 1);
+                addCircleVertex(this.layoutVertexArray, x, y, -1, 1);
 
-                arrays.elementArray.emplaceBack(index, index + 1, index + 2);
-                arrays.elementArray.emplaceBack(index, index + 3, index + 2);
+                this.elementArray.emplaceBack(index, index + 1, index + 2);
+                this.elementArray.emplaceBack(index, index + 3, index + 2);
 
                 segment.vertexLength += 4;
                 segment.primitiveLength += 2;
             }
         }
 
-        arrays.populatePaintArrays(feature.properties);
+        this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature.properties);
     }
 }
 

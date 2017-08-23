@@ -13,6 +13,7 @@ module.exports = function (directory, implementation, options, run) {
     const server = require('./server')();
 
     const tests = options.tests || [];
+    const ignores = options.ignores || {};
 
     function shouldRunTest(group, test) {
         if (tests.length === 0)
@@ -32,8 +33,14 @@ module.exports = function (directory, implementation, options, run) {
     q.defer(server.listen);
 
     fs.readdirSync(directory).forEach((group) => {
-        if (group === 'index.html' || group === 'results.html.tmpl' || group[0] === '.')
+        if (
+            group === 'index.html' ||
+            group === 'results.html.tmpl' ||
+            group === 'result_item.html.tmpl' ||
+            group[0] === '.'
+        ) {
             return;
+        }
 
         fs.readdirSync(path.join(directory, group)).forEach((test) => {
             if (!shouldRunTest(group, test))
@@ -51,30 +58,31 @@ module.exports = function (directory, implementation, options, run) {
                 return;
             }
 
+            if (implementation === 'native' && process.env.BUILDTYPE !== 'Debug' && group === 'debug') {
+                console.log(colors.gray(`* skipped ${group} ${test}`));
+                return;
+            }
+
+            const id = `${path.basename(directory)}/${group}/${test}`;
+            const ignored = ignores[id];
+            if (/^skip/.test(ignored)) {
+                console.log(colors.gray(`* skipped ${group} ${test} (${ignored})`));
+                return;
+            }
+
             const style = require(path.join(directory, group, test, 'style.json'));
 
             server.localizeURLs(style);
 
             const params = Object.assign({
-                group: group,
-                test: test,
+                group,
+                test,
                 width: 512,
                 height: 512,
                 pixelRatio: 1,
+                recycleMap: options.recycleMap || false,
                 allowed: 0.00015
-            }, style.metadata && style.metadata.test);
-
-            if (implementation === 'native' && process.env.BUILDTYPE === 'Release' && params.group === 'debug') {
-                console.log(colors.gray(`* skipped ${params.group} ${params.test}`));
-                return;
-            }
-
-            const skipped = params.skipped && params.skipped[implementation];
-            if (skipped) {
-                console.log(colors.gray(`* skipped ${params.group} ${params.test
-                    } (${skipped})`));
-                return;
-            }
+            }, style.metadata && style.metadata.test, {ignored});
 
             if ('diff' in params) {
                 if (typeof params.diff === 'number') {
@@ -84,23 +92,25 @@ module.exports = function (directory, implementation, options, run) {
                 }
             }
 
-            params.ignored = params.ignored && implementation in params.ignored;
-
             q.defer((callback) => {
                 run(style, params, (err) => {
                     if (err) return callback(err);
 
                     if (params.ignored && !params.ok) {
                         params.color = '#9E9E9E';
-                        console.log(colors.white(`* ignore ${params.group} ${params.test}`));
+                        params.status = 'ignored failed';
+                        console.log(colors.white(`* ignore ${params.group} ${params.test} (${params.ignored})`));
                     } else if (params.ignored) {
                         params.color = '#E8A408';
-                        console.log(colors.yellow(`* ignore ${params.group} ${params.test}`));
+                        params.status = 'ignored passed';
+                        console.log(colors.yellow(`* ignore ${params.group} ${params.test} (${params.ignored})`));
                     } else if (!params.ok) {
                         params.color = 'red';
+                        params.status = 'failed';
                         console.log(colors.red(`* failed ${params.group} ${params.test}`));
                     } else {
                         params.color = 'green';
+                        params.status = 'passed';
                         console.log(colors.green(`* passed ${params.group} ${params.test}`));
                     }
 
@@ -165,11 +175,36 @@ module.exports = function (directory, implementation, options, run) {
                 failedCount, (100 * failedCount / totalCount).toFixed(1));
         }
 
-        const resultsTemplate = template(fs.readFileSync(path.join(directory, 'results.html.tmpl'), 'utf8'));
-        const p = path.join(directory, 'index.html');
-        fs.writeFileSync(p, resultsTemplate({results: results}));
-        console.log(`Results at: ${p}`);
+        const resultsTemplate = template(fs.readFileSync(path.join(__dirname, '..', 'results.html.tmpl'), 'utf8'));
+        const itemTemplate = template(fs.readFileSync(path.join(directory, 'result_item.html.tmpl'), 'utf8'));
 
-        process.exit(failedCount === 0 ? 0 : 1);
+        const failed = results.filter(r => /failed/.test(r.status));
+        const resultsShell = resultsTemplate({ failed })
+            .split('<!-- results go here -->');
+
+        const p = path.join(directory, 'index.html');
+        const out = fs.createWriteStream(p);
+
+        const q = queue(1);
+        q.defer(write, out, resultsShell[0]);
+        for (const r of results) {
+            q.defer(write, out, itemTemplate({ r, hasFailedTests: failed.length > 0 }));
+        }
+        q.defer(write, out, resultsShell[1]);
+        q.await(() => {
+            out.end();
+            out.on('close', () => {
+                console.log(`Results at: ${p}`);
+                process.exit(failedCount === 0 ? 0 : 1);
+            });
+        });
     });
 };
+
+function write(stream, data, cb) {
+    if (!stream.write(data)) {
+        stream.once('drain', cb);
+    } else {
+        process.nextTick(cb);
+    }
+}

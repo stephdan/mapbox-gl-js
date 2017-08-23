@@ -1,16 +1,22 @@
-'use strict';
+// @flow
 
 const util = require('../util/util');
 const window = require('../util/window');
 const TileCoord = require('./tile_coord');
 const LngLat = require('../geo/lng_lat');
-const Point = require('point-geometry');
+const Point = require('@mapbox/point-geometry');
 const Evented = require('../util/evented');
 const ajax = require('../util/ajax');
 const EXTENT = require('../data/extent');
 const RasterBoundsArray = require('../data/raster_bounds_array');
 const Buffer = require('../data/buffer');
 const VertexArrayObject = require('../render/vertex_array_object');
+
+import type {Source} from './source';
+import type Map from '../ui/map';
+import type Dispatcher from '../util/dispatcher';
+import type Tile from './tile';
+import type Coordinate from '../geo/coordinate';
 
 /**
  * A data source containing an image.
@@ -42,9 +48,27 @@ const VertexArrayObject = require('../render/vertex_array_object');
  * map.removeSource('some id');  // remove
  * @see [Add an image](https://www.mapbox.com/mapbox-gl-js/example/image-on-a-map/)
  */
-class ImageSource extends Evented {
+class ImageSource extends Evented implements Source {
+    type: string;
+    id: string;
+    minzoom: number;
+    maxzoom: number;
+    tileSize: number;
+    url: string;
 
-    constructor(id, options, dispatcher, eventedParent) {
+    coordinates: [[number, number], [number, number], [number, number], [number, number]];
+    tiles: {[string]: Tile};
+    options: any;
+    dispatcher: Dispatcher;
+    map: Map;
+    texture: WebGLTexture;
+    textureLoaded: boolean;
+    image: HTMLImageElement;
+    centerCoord: Coordinate;
+    coord: TileCoord;
+    _tileCoords: Array<Point>;
+
+    constructor(id: string, options: ImageSourceSpecification | VideoSourceSpecification | CanvasSourceSpecification, dispatcher: Dispatcher, eventedParent: Evented) {
         super();
         this.id = id;
         this.dispatcher = dispatcher;
@@ -67,12 +91,13 @@ class ImageSource extends Evented {
 
         this.url = this.options.url;
 
-        ajax.getImage(this.options.url, (err, image) => {
-            if (err) return this.fire('error', {error: err});
-
-            this.image = image;
-
-            this._finishLoading();
+        ajax.getImage(this.map._transformRequest(this.url, ajax.ResourceType.Image), (err, image) => {
+            if (err) {
+                this.fire('error', {error: err});
+            } else if (image) {
+                this.image = image;
+                this._finishLoading();
+            }
         });
     }
 
@@ -83,12 +108,9 @@ class ImageSource extends Evented {
         }
     }
 
-    onAdd(map) {
-        this.load();
+    onAdd(map: Map) {
         this.map = map;
-        if (this.image) {
-            this.setCoordinates(this.coordinates);
-        }
+        this.load();
     }
 
     /**
@@ -100,7 +122,7 @@ class ImageSource extends Evented {
      *   They do not have to represent a rectangle.
      * @returns {ImageSource} this
      */
-    setCoordinates(coordinates) {
+    setCoordinates(coordinates: [[number, number], [number, number], [number, number], [number, number]]) {
         this.coordinates = coordinates;
 
         // Calculate which mercator tile is suitable for rendering the video in
@@ -141,14 +163,13 @@ class ImageSource extends Evented {
         return this;
     }
 
-    _setTile(tile) {
-        this.tiles[tile.coord.w] = tile;
-        const maxInt16 = 32767;
+    _setTile(tile: Tile) {
+        this.tiles[String(tile.coord.w)] = tile;
         const array = new RasterBoundsArray();
         array.emplaceBack(this._tileCoords[0].x, this._tileCoords[0].y, 0, 0);
-        array.emplaceBack(this._tileCoords[1].x, this._tileCoords[1].y, maxInt16, 0);
-        array.emplaceBack(this._tileCoords[3].x, this._tileCoords[3].y, 0, maxInt16);
-        array.emplaceBack(this._tileCoords[2].x, this._tileCoords[2].y, maxInt16, maxInt16);
+        array.emplaceBack(this._tileCoords[1].x, this._tileCoords[1].y, EXTENT, 0);
+        array.emplaceBack(this._tileCoords[3].x, this._tileCoords[3].y, 0, EXTENT);
+        array.emplaceBack(this._tileCoords[2].x, this._tileCoords[2].y, EXTENT, EXTENT);
 
         tile.buckets = {};
 
@@ -157,11 +178,11 @@ class ImageSource extends Evented {
     }
 
     prepare() {
-        if (Object.keys(this.tiles).length === 0 === 0 || !this.image) return;
+        if (Object.keys(this.tiles).length === 0 || !this.image) return;
         this._prepareImage(this.map.painter.gl, this.image);
     }
 
-    _prepareImage(gl, image, resize) {
+    _prepareImage(gl: WebGLRenderingContext, image: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement, resize?: boolean) {
         if (!this.textureLoaded) {
             this.textureLoaded = true;
             this.texture = gl.createTexture();
@@ -187,7 +208,7 @@ class ImageSource extends Evented {
         }
     }
 
-    loadTile(tile, callback) {
+    loadTile(tile: Tile, callback: Callback<void>) {
         // We have a single tile -- whoose coordinates are this.coord -- that
         // covers the image we want to render.  If that's the one being
         // requested, set it up with the image; otherwise, mark the tile as
@@ -203,10 +224,10 @@ class ImageSource extends Evented {
         }
     }
 
-    serialize() {
+    serialize(): Object {
         return {
             type: 'image',
-            urls: this.url,
+            urls: this.options.url,
             coordinates: this.coordinates
         };
     }
