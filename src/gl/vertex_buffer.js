@@ -25,17 +25,15 @@ const AttributeType = {
 };
 
 /**
- * The `Buffer` class turns a `StructArray` into a WebGL buffer. Each member of the StructArray's
+ * The `VertexBuffer` class turns a `StructArray` into a WebGL buffer. Each member of the StructArray's
  * Struct type is converted to a WebGL atribute.
  * @private
  */
-class Buffer {
-    static BufferType: {[string]: 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER'};
+class VertexBuffer {
     arrayBuffer: ?ArrayBuffer;
     length: number;
     attributes: Array<StructArrayMember>;
     itemSize: number;
-    type: 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
     arrayType: SerializedStructArrayType;
     dynamicDraw: ?boolean;
     gl: WebGLRenderingContext;
@@ -44,24 +42,21 @@ class Buffer {
     /**
      * @param {Object} array A serialized StructArray.
      * @param {Object} arrayType A serialized StructArrayType.
-     * @param {BufferType} type
      * @param {boolean} dynamicDraw Whether this buffer will be repeatedly updated.
      */
     constructor(array: SerializedStructArray,
                 arrayType: SerializedStructArrayType,
-                type: 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER',
                 dynamicDraw?: boolean) {
         this.arrayBuffer = array.arrayBuffer;
         this.length = array.length;
         this.attributes = arrayType.members;
         this.itemSize = arrayType.bytesPerElement;
-        this.type = type;
         this.arrayType = arrayType;
         this.dynamicDraw = dynamicDraw;
     }
 
-    static fromStructArray(array: StructArray, type: 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER') {
-        return new Buffer(array.serialize(), array.constructor.serialize(), type);
+    static fromStructArray(array: StructArray) {
+        return new VertexBuffer(array.serialize(), array.constructor.serialize());
     }
 
     /**
@@ -69,21 +64,19 @@ class Buffer {
      * @param gl The WebGL context
      */
     bind(gl: WebGLRenderingContext) {
-        const type: number = (gl: any)[this.type];
-
         if (!this.buffer) {
             this.gl = gl;
             this.buffer = gl.createBuffer();
-            gl.bindBuffer(type, this.buffer);
-            gl.bufferData(type, this.arrayBuffer, this.dynamicDraw ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, this.arrayBuffer, this.dynamicDraw ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
 
             // dump array buffer once it's bound to gl
             this.arrayBuffer = null;
         } else {
-            gl.bindBuffer(type, this.buffer);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.buffer);
 
             if (this.dynamicDraw && this.arrayBuffer) {
-                gl.bufferSubData(type, 0, this.arrayBuffer);
+                gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.arrayBuffer);
                 this.arrayBuffer = null;
             }
         }
@@ -109,7 +102,7 @@ class Buffer {
      * @param program The active WebGL program
      * @param vertexOffset Index of the starting vertex of the segment
      */
-    setVertexAttribPointers(gl: WebGLRenderingContext, program: Program, vertexOffset: number) {
+    setVertexAttribPointers(gl: WebGLRenderingContext, program: Program, vertexOffset: ?number) {
         for (let j = 0; j < this.attributes.length; j++) {
             const member = this.attributes[j];
             const attribIndex: number | void = program.attributes[member.name];
@@ -121,7 +114,7 @@ class Buffer {
                     (gl: any)[AttributeType[member.type]],
                     false,
                     this.arrayType.bytesPerElement,
-                    member.offset + (this.arrayType.bytesPerElement * vertexOffset || 0)
+                    member.offset + (this.arrayType.bytesPerElement * (vertexOffset || 0))
                 );
             }
         }
@@ -137,14 +130,4 @@ class Buffer {
     }
 }
 
-/**
- * @enum {string} BufferType
- * @private
- * @readonly
- */
-Buffer.BufferType = {
-    VERTEX: 'ARRAY_BUFFER',
-    ELEMENT: 'ELEMENT_ARRAY_BUFFER'
-};
-
-module.exports = Buffer;
+module.exports = VertexBuffer;

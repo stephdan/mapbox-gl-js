@@ -1,10 +1,11 @@
 // @flow
 
 const {SegmentVector} = require('../segment');
-const Buffer = require('../buffer');
+const VertexBuffer = require('../../gl/vertex_buffer');
+const IndexBuffer = require('../../gl/index_buffer');
 const {ProgramConfigurationSet} = require('../program_configuration');
 const createVertexArrayType = require('../vertex_array_type');
-const createElementArrayType = require('../element_array_type');
+const {TriangleIndexArray} = require('../index_array_type');
 const loadGeometry = require('../load_geometry');
 const EXTENT = require('../extent');
 const earcut = require('earcut');
@@ -23,7 +24,7 @@ const fillExtrusionInterface = {
         {name: 'a_normal',       components: 3, type: 'Int16'},
         {name: 'a_edgedistance', components: 1, type: 'Int16'}
     ],
-    elementArrayType: createElementArrayType(3),
+    indexArrayType: TriangleIndexArray,
 
     paintAttributes: [
         {property: 'fill-extrusion-base'},
@@ -50,7 +51,7 @@ function addVertex(vertexArray, x, y, nx, ny, nz, t, e) {
 }
 
 const LayoutVertexArrayType = createVertexArrayType(fillExtrusionInterface.layoutAttributes);
-const ElementArrayType = fillExtrusionInterface.elementArrayType;
+const IndexArrayType = fillExtrusionInterface.indexArrayType;
 
 class FillExtrusionBucket implements Bucket {
     static programInterface: ProgramInterface;
@@ -61,10 +62,10 @@ class FillExtrusionBucket implements Bucket {
     layers: Array<StyleLayer>;
 
     layoutVertexArray: StructArray;
-    layoutVertexBuffer: Buffer;
+    layoutVertexBuffer: VertexBuffer;
 
-    elementArray: StructArray;
-    elementBuffer: Buffer;
+    indexArray: StructArray;
+    indexBuffer: IndexBuffer;
 
     programConfigurations: ProgramConfigurationSet;
     segments: SegmentVector;
@@ -76,13 +77,13 @@ class FillExtrusionBucket implements Bucket {
         this.index = options.index;
 
         if (options.layoutVertexArray) {
-            this.layoutVertexBuffer = new Buffer(options.layoutVertexArray, LayoutVertexArrayType.serialize(), Buffer.BufferType.VERTEX);
-            this.elementBuffer = new Buffer(options.elementArray, ElementArrayType.serialize(), Buffer.BufferType.ELEMENT);
+            this.layoutVertexBuffer = new VertexBuffer(options.layoutVertexArray, LayoutVertexArrayType.serialize());
+            this.indexBuffer = new IndexBuffer(options.indexArray);
             this.programConfigurations = ProgramConfigurationSet.deserialize(fillExtrusionInterface, options.layers, options.zoom, options.programConfigurations);
             this.segments = new SegmentVector(options.segments);
         } else {
             this.layoutVertexArray = new LayoutVertexArrayType();
-            this.elementArray = new ElementArrayType();
+            this.indexArray = new IndexArrayType();
             this.programConfigurations = new ProgramConfigurationSet(fillExtrusionInterface, options.layers, options.zoom);
             this.segments = new SegmentVector();
         }
@@ -106,7 +107,7 @@ class FillExtrusionBucket implements Bucket {
             zoom: this.zoom,
             layerIds: this.layers.map((l) => l.id),
             layoutVertexArray: this.layoutVertexArray.serialize(transferables),
-            elementArray: this.elementArray.serialize(transferables),
+            indexArray: this.indexArray.serialize(transferables),
             programConfigurations: this.programConfigurations.serialize(transferables),
             segments: this.segments.get(),
         };
@@ -114,7 +115,7 @@ class FillExtrusionBucket implements Bucket {
 
     destroy() {
         this.layoutVertexBuffer.destroy();
-        this.elementBuffer.destroy();
+        this.indexBuffer.destroy();
         this.programConfigurations.destroy();
         this.segments.destroy();
     }
@@ -126,7 +127,7 @@ class FillExtrusionBucket implements Bucket {
                 numVertices += ring.length;
             }
 
-            const segment = this.segments.prepareSegment(numVertices * 5, this.layoutVertexArray, this.elementArray);
+            const segment = this.segments.prepareSegment(numVertices * 5, this.layoutVertexArray, this.indexArray);
 
             const flattened = [];
             const holeIndices = [];
@@ -165,8 +166,8 @@ class FillExtrusionBucket implements Bucket {
 
                             const bottomRight = segment.vertexLength;
 
-                            this.elementArray.emplaceBack(bottomRight, bottomRight + 1, bottomRight + 2);
-                            this.elementArray.emplaceBack(bottomRight + 1, bottomRight + 2, bottomRight + 3);
+                            this.indexArray.emplaceBack(bottomRight, bottomRight + 1, bottomRight + 2);
+                            this.indexArray.emplaceBack(bottomRight + 1, bottomRight + 2, bottomRight + 3);
 
                             segment.vertexLength += 4;
                             segment.primitiveLength += 2;
@@ -183,7 +184,7 @@ class FillExtrusionBucket implements Bucket {
             assert(triangleIndices.length % 3 === 0);
 
             for (let j = 0; j < triangleIndices.length; j += 3) {
-                this.elementArray.emplaceBack(
+                this.indexArray.emplaceBack(
                     indices[triangleIndices[j]],
                     indices[triangleIndices[j + 1]],
                     indices[triangleIndices[j + 2]]);

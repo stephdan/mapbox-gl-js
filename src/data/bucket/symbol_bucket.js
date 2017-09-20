@@ -2,10 +2,11 @@
 
 const Point = require('@mapbox/point-geometry');
 const {SegmentVector} = require('../segment');
-const Buffer = require('../buffer');
+const VertexBuffer = require('../../gl/vertex_buffer');
+const IndexBuffer = require('../../gl/index_buffer');
 const {ProgramConfigurationSet} = require('../program_configuration');
 const createVertexArrayType = require('../vertex_array_type');
-const createElementArrayType = require('../element_array_type');
+const {TriangleIndexArray, LineIndexArray} = require('../index_array_type');
 const EXTENT = require('../extent');
 const {packUint8ToFloat} = require('../../shaders/encode_attribute');
 const Anchor = require('../../symbol/anchor');
@@ -113,8 +114,6 @@ const LineVertexArray = createStructArrayType({
         { type: 'Int16', name: 'y' }
     ]});
 
-const elementArrayType = createElementArrayType();
-
 const layoutAttributes = [
     {name: 'a_pos_offset',  components: 4, type: 'Int16'},
     {name: 'a_data',        components: 4, type: 'Uint16'}
@@ -128,7 +127,7 @@ const symbolInterfaces = {
     text: {
         layoutAttributes: layoutAttributes,
         dynamicLayoutAttributes: dynamicLayoutAttributes,
-        elementArrayType: elementArrayType,
+        indexArrayType: TriangleIndexArray,
         paintAttributes: [
             {property: 'text-color', name: 'fill_color'},
             {property: 'text-halo-color', name: 'halo_color'},
@@ -140,7 +139,7 @@ const symbolInterfaces = {
     icon: {
         layoutAttributes: layoutAttributes,
         dynamicLayoutAttributes: dynamicLayoutAttributes,
-        elementArrayType: elementArrayType,
+        indexArrayType: TriangleIndexArray,
         paintAttributes: [
             {property: 'icon-color', name: 'fill_color'},
             {property: 'icon-halo-color', name: 'halo_color'},
@@ -156,7 +155,7 @@ const symbolInterfaces = {
             {name: 'a_extrude',    components: 2, type: 'Int16'},
             {name: 'a_data',       components: 2, type: 'Uint8'}
         ],
-        elementArrayType: createElementArrayType(2)
+        indexArrayType: LineIndexArray
     }
 };
 
@@ -206,36 +205,36 @@ function addCollisionBoxVertex(layoutVertexArray, point, anchor, extrude, maxZoo
 type SerializedSymbolBuffer = {
     layoutVertexArray: SerializedStructArray,
     dynamicLayoutVertexArray: SerializedStructArray,
-    elementArray: SerializedStructArray,
+    indexArray: SerializedStructArray,
     programConfigurations: {[string]: ?SerializedProgramConfiguration},
     segments: Array<Object>,
 };
 
 class SymbolBuffers {
     layoutVertexArray: StructArray;
-    layoutVertexBuffer: Buffer;
+    layoutVertexBuffer: VertexBuffer;
 
-    elementArray: StructArray;
-    elementBuffer: Buffer;
+    indexArray: StructArray;
+    indexBuffer: IndexBuffer;
 
     programConfigurations: ProgramConfigurationSet;
     segments: SegmentVector;
 
     dynamicLayoutVertexArray: StructArray;
-    dynamicLayoutVertexBuffer: Buffer;
+    dynamicLayoutVertexBuffer: VertexBuffer;
 
     constructor(programInterface: ProgramInterface, layers: Array<StyleLayer>, zoom: number, arrays?: SerializedSymbolBuffer) {
         const LayoutVertexArrayType = createVertexArrayType(programInterface.layoutAttributes);
-        const ElementArrayType = programInterface.elementArrayType;
+        const IndexArrayType = programInterface.indexArrayType;
 
         if (arrays) {
-            this.layoutVertexBuffer = new Buffer(arrays.layoutVertexArray, LayoutVertexArrayType.serialize(), Buffer.BufferType.VERTEX);
-            this.elementBuffer = new Buffer(arrays.elementArray, ElementArrayType.serialize(), Buffer.BufferType.ELEMENT);
+            this.layoutVertexBuffer = new VertexBuffer(arrays.layoutVertexArray, LayoutVertexArrayType.serialize());
+            this.indexBuffer = new IndexBuffer(arrays.indexArray);
             this.programConfigurations = ProgramConfigurationSet.deserialize(programInterface, layers, zoom, arrays.programConfigurations);
             this.segments = new SegmentVector(arrays.segments);
         } else {
             this.layoutVertexArray = new LayoutVertexArrayType();
-            this.elementArray = new ElementArrayType();
+            this.indexArray = new IndexArrayType();
             this.programConfigurations = new ProgramConfigurationSet(programInterface, layers, zoom);
             this.segments = new SegmentVector();
         }
@@ -248,8 +247,7 @@ class SymbolBuffers {
 
         if (arrays) {
             this.dynamicLayoutVertexArray = new DynamicLayoutVertexArrayType(arrays.dynamicLayoutVertexArray);
-            this.dynamicLayoutVertexBuffer = new Buffer(arrays.dynamicLayoutVertexArray,
-                DynamicLayoutVertexArrayType.serialize(), Buffer.BufferType.VERTEX, true);
+            this.dynamicLayoutVertexBuffer = new VertexBuffer(arrays.dynamicLayoutVertexArray, DynamicLayoutVertexArrayType.serialize(), true);
         } else {
             this.dynamicLayoutVertexArray = new DynamicLayoutVertexArrayType();
         }
@@ -258,7 +256,7 @@ class SymbolBuffers {
     serialize(transferables?: Array<Transferable>): SerializedSymbolBuffer {
         return {
             layoutVertexArray: this.layoutVertexArray.serialize(transferables),
-            elementArray: this.elementArray.serialize(transferables),
+            indexArray: this.indexArray.serialize(transferables),
             programConfigurations: this.programConfigurations.serialize(transferables),
             segments: this.segments.get(),
             dynamicLayoutVertexArray: this.dynamicLayoutVertexArray && this.dynamicLayoutVertexArray.serialize(transferables),
@@ -267,7 +265,7 @@ class SymbolBuffers {
 
     destroy() {
         this.layoutVertexBuffer.destroy();
-        this.elementBuffer.destroy();
+        this.indexBuffer.destroy();
         this.programConfigurations.destroy();
         this.segments.destroy();
         if (this.dynamicLayoutVertexBuffer) {
@@ -854,7 +852,7 @@ class SymbolBucket implements Bucket {
                lineStartIndex: number,
                lineLength: number,
                placedSymbolArray: StructArray) {
-        const elementArray = arrays.elementArray;
+        const indexArray = arrays.indexArray;
         const layoutVertexArray = arrays.layoutVertexArray;
         const dynamicLayoutVertexArray = arrays.dynamicLayoutVertexArray;
 
@@ -882,7 +880,7 @@ class SymbolBucket implements Bucket {
                 br = symbol.br,
                 tex = symbol.tex;
 
-            const segment = arrays.segments.prepareSegment(4, arrays.layoutVertexArray, arrays.elementArray);
+            const segment = arrays.segments.prepareSegment(4, arrays.layoutVertexArray, arrays.indexArray);
             const index = segment.vertexLength;
 
             const y = symbol.glyphOffset[1];
@@ -893,8 +891,8 @@ class SymbolBucket implements Bucket {
 
             addDynamicAttributes(dynamicLayoutVertexArray, labelAnchor, 0, placementZoom);
 
-            elementArray.emplaceBack(index, index + 1, index + 2);
-            elementArray.emplaceBack(index + 1, index + 2, index + 3);
+            indexArray.emplaceBack(index, index + 1, index + 2);
+            indexArray.emplaceBack(index + 1, index + 2, index + 3);
 
             segment.vertexLength += 4;
             segment.primitiveLength += 2;
@@ -915,7 +913,7 @@ class SymbolBucket implements Bucket {
     addToDebugBuffers(collisionTile: CollisionTile) {
         const arrays = this.collisionBox;
         const layoutVertexArray = arrays.layoutVertexArray;
-        const elementArray = arrays.elementArray;
+        const indexArray = arrays.indexArray;
 
         const angle = -collisionTile.angle;
         const yStretch = collisionTile.yStretch;
@@ -945,7 +943,7 @@ class SymbolBucket implements Bucket {
                     const maxZoom = Math.max(0, Math.min(25, this.zoom + Math.log(box.maxScale) / Math.LN2));
                     const placementZoom = Math.max(0, Math.min(25, this.zoom + Math.log(box.placementScale) / Math.LN2));
 
-                    const segment = arrays.segments.prepareSegment(4, arrays.layoutVertexArray, arrays.elementArray);
+                    const segment = arrays.segments.prepareSegment(4, arrays.layoutVertexArray, arrays.indexArray);
                     const index = segment.vertexLength;
 
                     addCollisionBoxVertex(layoutVertexArray, boxAnchorPoint, symbolInstance.anchor, tl, maxZoom, placementZoom);
@@ -953,10 +951,10 @@ class SymbolBucket implements Bucket {
                     addCollisionBoxVertex(layoutVertexArray, boxAnchorPoint, symbolInstance.anchor, br, maxZoom, placementZoom);
                     addCollisionBoxVertex(layoutVertexArray, boxAnchorPoint, symbolInstance.anchor, bl, maxZoom, placementZoom);
 
-                    elementArray.emplaceBack(index, index + 1);
-                    elementArray.emplaceBack(index + 1, index + 2);
-                    elementArray.emplaceBack(index + 2, index + 3);
-                    elementArray.emplaceBack(index + 3, index);
+                    indexArray.emplaceBack(index, index + 1);
+                    indexArray.emplaceBack(index + 1, index + 2);
+                    indexArray.emplaceBack(index + 2, index + 3);
+                    indexArray.emplaceBack(index + 3, index);
 
                     segment.vertexLength += 4;
                     segment.primitiveLength += 4;

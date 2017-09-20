@@ -1,10 +1,11 @@
 // @flow
 
 const {SegmentVector} = require('../segment');
-const Buffer = require('../buffer');
+const VertexBuffer = require('../../gl/vertex_buffer');
+const IndexBuffer = require('../../gl/index_buffer');
 const {ProgramConfigurationSet} = require('../program_configuration');
 const createVertexArrayType = require('../vertex_array_type');
-const createElementArrayType = require('../element_array_type');
+const {TriangleIndexArray} = require('../index_array_type');
 const loadGeometry = require('../load_geometry');
 const EXTENT = require('../extent');
 
@@ -17,7 +18,7 @@ const circleInterface = {
     layoutAttributes: [
         {name: 'a_pos', components: 2, type: 'Int16'}
     ],
-    elementArrayType: createElementArrayType(),
+    indexArrayType: TriangleIndexArray,
 
     paintAttributes: [
         {property: 'circle-color'},
@@ -37,7 +38,6 @@ function addCircleVertex(layoutVertexArray, x, y, extrudeX, extrudeY) {
 }
 
 const LayoutVertexArrayType = createVertexArrayType(circleInterface.layoutAttributes);
-const ElementArrayType = circleInterface.elementArrayType;
 
 /**
  * Circles are represented by two triangles.
@@ -55,10 +55,10 @@ class CircleBucket implements Bucket {
     layers: Array<StyleLayer>;
 
     layoutVertexArray: StructArray;
-    layoutVertexBuffer: Buffer;
+    layoutVertexBuffer: VertexBuffer;
 
-    elementArray: StructArray;
-    elementBuffer: Buffer;
+    indexArray: StructArray;
+    indexBuffer: IndexBuffer;
 
     programConfigurations: ProgramConfigurationSet;
     segments: SegmentVector;
@@ -70,13 +70,13 @@ class CircleBucket implements Bucket {
         this.index = options.index;
 
         if (options.layoutVertexArray) {
-            this.layoutVertexBuffer = new Buffer(options.layoutVertexArray, LayoutVertexArrayType.serialize(), Buffer.BufferType.VERTEX);
-            this.elementBuffer = new Buffer(options.elementArray, ElementArrayType.serialize(), Buffer.BufferType.ELEMENT);
+            this.layoutVertexBuffer = new VertexBuffer(options.layoutVertexArray, LayoutVertexArrayType.serialize());
+            this.indexBuffer = new IndexBuffer(options.indexArray);
             this.programConfigurations = ProgramConfigurationSet.deserialize(circleInterface, options.layers, options.zoom, options.programConfigurations);
             this.segments = new SegmentVector(options.segments);
         } else {
             this.layoutVertexArray = new LayoutVertexArrayType();
-            this.elementArray = new ElementArrayType();
+            this.indexArray = new TriangleIndexArray();
             this.programConfigurations = new ProgramConfigurationSet(circleInterface, options.layers, options.zoom);
             this.segments = new SegmentVector();
         }
@@ -100,7 +100,7 @@ class CircleBucket implements Bucket {
             zoom: this.zoom,
             layerIds: this.layers.map((l) => l.id),
             layoutVertexArray: this.layoutVertexArray.serialize(transferables),
-            elementArray: this.elementArray.serialize(transferables),
+            indexArray: this.indexArray.serialize(transferables),
             programConfigurations: this.programConfigurations.serialize(transferables),
             segments: this.segments.get(),
         };
@@ -108,7 +108,7 @@ class CircleBucket implements Bucket {
 
     destroy() {
         this.layoutVertexBuffer.destroy();
-        this.elementBuffer.destroy();
+        this.indexBuffer.destroy();
         this.programConfigurations.destroy();
         this.segments.destroy();
     }
@@ -131,7 +131,7 @@ class CircleBucket implements Bucket {
                 // │ 0     1 │
                 // └─────────┘
 
-                const segment = this.segments.prepareSegment(4, this.layoutVertexArray, this.elementArray);
+                const segment = this.segments.prepareSegment(4, this.layoutVertexArray, this.indexArray);
                 const index = segment.vertexLength;
 
                 addCircleVertex(this.layoutVertexArray, x, y, -1, -1);
@@ -139,8 +139,8 @@ class CircleBucket implements Bucket {
                 addCircleVertex(this.layoutVertexArray, x, y, 1, 1);
                 addCircleVertex(this.layoutVertexArray, x, y, -1, 1);
 
-                this.elementArray.emplaceBack(index, index + 1, index + 2);
-                this.elementArray.emplaceBack(index, index + 3, index + 2);
+                this.indexArray.emplaceBack(index, index + 1, index + 2);
+                this.indexArray.emplaceBack(index, index + 3, index + 2);
 
                 segment.vertexLength += 4;
                 segment.primitiveLength += 2;
